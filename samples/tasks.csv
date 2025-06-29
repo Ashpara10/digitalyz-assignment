@@ -1,0 +1,16 @@
+TaskID,TaskName,Category,Duration,RequiredSkills,PreferredPhases,MaxConcurrent
+T001,Frontend Development,development,3,"javascript,react","[1,2,3]",2
+T002,Backend API Design,development,2,"java,spring","[2,3]",1
+T003,Database Schema Design,development,1,"database,sql","[1,2]",1
+T004,Machine Learning Model,data_science,4,"python,machine_learning","[2,3,4]",1
+T005,UI/UX Design,design,2,"ui_ux,figma","[1,2]",2
+T006,DevOps Setup,infrastructure,2,"devops,aws","[3,4]",1
+T007,Testing Automation,quality_assurance,2,"testing,automation","[4,5]",2
+T008,Content Creation,marketing,1,"content_writing","[1,2,3]",3
+T009,Sales Strategy,strategy,2,"sales,negotiation","[1,2]",1
+T010,Customer Support System,operations,3,"customer_support,communication","[2,3,4]",2
+T011,Mobile App Development,development,4,"mobile_development,ios","[2,3,4,5]",1
+T012,Security Audit,security,2,"security,penetration_testing","[4,5]",1
+T013,Business Analysis,business,2,"business_analysis,requirements","[1,2]",1
+T014,Network Infrastructure,infrastructure,3,"networking,cisco","[3,4,5]",1
+T015,Project Planning,management,1,"project_management,agile","[1]",1 

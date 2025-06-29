@@ -1,0 +1,16 @@
+WorkerID,WorkerName,Skills,AvailableSlots,MaxLoadPerPhase,WorkerGroup,QualificationLevel
+W001,John Smith,"javascript,react,nodejs","[1,2,3,4,5]",3,senior_dev,senior
+W002,Sarah Johnson,"python,data_analysis,machine_learning","[2,3,4]",2,data_scientist,senior
+W003,Mike Chen,"java,spring,microservices","[1,3,5]",2,backend_dev,mid
+W004,Emily Davis,"ui_ux,figma,prototyping","[1,2,4,5]",2,designer,senior
+W005,Alex Rodriguez,"devops,aws,docker","[2,4,6]",3,devops_engineer,senior
+W006,Lisa Wang,"project_management,agile,scrum","[1,2,3,4,5]",1,project_manager,senior
+W007,David Kim,"testing,automation,selenium","[3,4,5]",2,qa_engineer,mid
+W008,Maria Garcia,"content_writing,seo,marketing","[1,2,3]",2,content_creator,mid
+W009,Tom Wilson,"sales,crm,negotiation","[1,2,4,5]",1,sales_rep,senior
+W010,Anna Brown,"customer_support,communication,problem_solving","[1,3,5]",2,support_specialist,mid
+W011,Chris Lee,"mobile_development,ios,android","[2,4,6]",2,mobile_dev,senior
+W012,Rachel Green,"database,sql,mongodb","[1,3,5]",2,database_admin,mid
+W013,Kevin Martinez,"security,penetration_testing,compliance","[2,4,6]",1,security_analyst,senior
+W014,Jessica Taylor,"business_analysis,requirements,stakeholder_management","[1,2,3,4]",1,business_analyst,senior
+W015,Ryan Anderson,"networking,cisco,infrastructure","[3,4,5]",2,network_engineer,mid 

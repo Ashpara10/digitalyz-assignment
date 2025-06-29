@@ -1,0 +1,11 @@
+ClientID,ClientName,PriorityLevel,RequestedTaskIDs,GroupTag,AttributesJSON
+C001,Acme Corp,5,"T001,T002,T003",enterprise,"{""industry"": ""technology"", ""budget"": 50000}"
+C002,StartupXYZ,3,"T002,T004",startup,"{""industry"": ""fintech"", ""budget"": 15000}"
+C003,Global Retail,4,"T001,T005,T006",enterprise,"{""industry"": ""retail"", ""budget"": 75000}"
+C004,Local Cafe,2,"T003",small_business,"{""industry"": ""food"", ""budget"": 5000}"
+C005,Tech Innovators,5,"T004,T007,T008",startup,"{""industry"": ""ai"", ""budget"": 100000}"
+C006,Healthcare Plus,4,"T005,T009",enterprise,"{""industry"": ""healthcare"", ""budget"": 60000}"
+C007,Education First,3,"T006,T010",nonprofit,"{""industry"": ""education"", ""budget"": 25000}"
+C008,Green Energy Co,4,"T007,T011",enterprise,"{""industry"": ""energy"", ""budget"": 80000}"
+C009,Creative Agency,2,"T008,T012",agency,"{""industry"": ""marketing"", ""budget"": 30000}"
+C010,Manufacturing Inc,3,"T009,T013",enterprise,"{""industry"": ""manufacturing"", ""budget"": 45000}" 

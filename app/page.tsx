@@ -1,5 +1,12 @@
 "use client";
 import {
+  AIMessage,
+  BaseMessage,
+  HumanMessage,
+  SystemMessage,
+} from "@langchain/core/messages";
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+import {
   AllCommunityModule,
   ColDef,
   GridApi,
@@ -12,40 +19,43 @@ import { parse } from "papaparse";
 import React, { FC, useEffect, useMemo, useRef, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import * as XLSX from "xlsx";
-import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
-import {
-  HumanMessage,
-  AIMessage,
-  BaseMessage,
-  SystemMessage,
-} from "@langchain/core/messages";
 
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   CellErrorMap,
   clientSchema,
-  TClient,
+  taskSchema,
+  workerSchema,
   TFileType,
   TValidationErrorProps,
   ValidationErrorType,
 } from "@/lib/types";
 import {
   capitalizeFirstLetter,
+  checkDuplicateIDs,
   checkMissingColumns,
+  cn,
   getCellErrorMap,
   runCoreValidations,
 } from "@/lib/utils";
 import { themeBalham } from "ag-grid-community";
 import { Plus, Trash2, Upload } from "lucide-react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useChat } from "@ai-sdk/react";
+import { DataTable } from "@/components/data-table";
 
 type TFileProps = File[] | null;
 ModuleRegistry.registerModules([AllCommunityModule]);
 
 const Page = () => {
-  const [rows, setRows] = React.useState<any[]>([]);
-  const [columnDef, setColumnDef] = React.useState<string[]>([]);
+  // Store rows and columns for each entity type separately
+  const [entityData, setEntityData] = React.useState<
+    Record<TFileType, { rows: any[]; columns: string[] }>
+  >({
+    client: { rows: [], columns: [] },
+    tasks: { rows: [], columns: [] },
+    worker: { rows: [], columns: [] },
+  });
+
   const [fullDataSet, setFullDataSet] = React.useState<
     Record<TFileType, TFileProps>
   >({
@@ -70,6 +80,13 @@ const Page = () => {
   const [cellErrorMap, setCellErrorMap] = React.useState<CellErrorMap>({});
   const myTheme = themeBalham.withParams({ accentColor: "red" });
 
+  // Get current entity's data for display
+  const currentEntityData = activeType
+    ? entityData[activeType]
+    : { rows: [], columns: [] };
+  const currentRows = currentEntityData.rows;
+  const currentColumns = currentEntityData.columns;
+
   const onDrop = React.useCallback(
     (acceptedFiles: File[]) => {
       if (!activeType) return;
@@ -80,30 +97,6 @@ const Page = () => {
     },
     [activeType]
   );
-
-  const dynamicColumns = useMemo(() => {
-    if (!columnDef || columnDef.length === 0) return [];
-    return columnDef.map(
-      (key) =>
-        ({
-          headerName: key,
-          field: key,
-          sortable: true,
-          filter: true,
-          editable: true,
-          cellRenderer: CustomCellRenderer,
-          cellClassRules: {
-            "ag-cell-error": (params) => {
-              const rowIndex = params.node.rowIndex as number;
-              return !!cellErrorMap[key]?.[rowIndex];
-            },
-          },
-          tooltipValueGetter: (params) =>
-            cellErrorMap[key]?.[params.node!.rowIndex as number]?.join(", ") ||
-            "",
-        } as ColDef)
-    );
-  }, [columnDef, cellErrorMap]);
 
   const handleCSVFileUpload = (file: File, activeType: TFileType) => {
     parse(file, {
@@ -127,7 +120,6 @@ const Page = () => {
         }
 
         const data = results.data;
-
         const headers = results?.meta?.fields as string[];
         console.log("Headers:", headers);
 
@@ -140,13 +132,16 @@ const Page = () => {
         if (missingColumnErrors?.length > 0) {
           setValidationErrors((prev) => ({
             ...prev,
-            client: [...(prev["client"] || []), ...missingColumnErrors],
+            [activeType]: [...(prev[activeType] || []), ...missingColumnErrors],
           }));
           return;
         }
 
-        setColumnDef(headers);
-        setRows(data);
+        // Update entity data for this specific type
+        setEntityData((prev) => ({
+          ...prev,
+          [activeType]: { rows: data, columns: headers },
+        }));
       },
     });
   };
@@ -174,73 +169,106 @@ const Page = () => {
         }));
         return;
       }
-      setColumnDef(headers);
-      setRows(json);
+
+      // Update entity data for this specific type
+      setEntityData((prev) => ({
+        ...prev,
+        [activeType]: { rows: json, columns: headers },
+      }));
     };
     reader.readAsArrayBuffer(file);
   };
 
-  const runZodValidations = (api: GridApi) => {
+  const runZodValidations = (api: GridApi, entityType: TFileType) => {
     const errors: TValidationErrorProps[] = [];
+    const schema = getSchemaForEntityType(entityType);
 
     api.forEachNode((node: IRowNode, i: number) => {
-      const { success, error } = clientSchema.safeParse(node?.data);
+      const { success, error } = schema.safeParse(node?.data);
       if (success) {
       } else {
         errors.push({
           type: "ZodValidationError",
-          entity: "client" as TFileType,
-          error: error?.errors.map((err) => err.message).join(", "),
+          entity: entityType,
+          error: error?.errors.map((err: any) => err.message).join(", "),
           affectedRows: [i],
-          affectedFields: error.errors.map((e) => String(e.path[0])),
+          affectedFields: error.errors.map((e: any) => String(e.path[0])),
         });
       }
     });
 
-    const coreErrors = runCoreValidations({ data: rows, type: "client" });
+    const coreErrors = runCoreValidations({
+      data: currentRows,
+      type: entityType,
+    });
     console.log({ coreErrors });
     return [...errors, ...coreErrors];
   };
 
-  useEffect(() => {
-    if (!gridApi) return;
+  const getSchemaForEntityType = (entityType: TFileType) => {
+    switch (entityType) {
+      case "client":
+        return clientSchema;
+      case "tasks":
+        return taskSchema;
+      case "worker":
+        return workerSchema;
+      default:
+        return clientSchema;
+    }
+  };
 
-    const errors = runZodValidations(gridApi);
-    const map = getCellErrorMap(errors);
-    setCellErrorMap(map);
+  // useEffect(() => {
+  //   if (!gridApi || !activeType) return;
 
-    gridApi.refreshCells({
-      force: true,
-    });
-    setValidationErrors((prev) => ({
-      ...prev,
-      client: [...errors],
-    }));
-  }, [gridApi, rows, columnDef]);
+  //   const errors = runZodValidations(gridApi, activeType);
+  //   const map = getCellErrorMap(errors);
+  //   setCellErrorMap(map);
 
-  console.log({ validationErrors });
+  //   gridApi.refreshCells({
+  //     force: true,
+  //   });
+  //   setValidationErrors((prev) => ({
+  //     ...prev,
+  //     [activeType]: [...errors],
+  //   }));
+  // }, [gridApi, activeType, entityData]);
+
+  // Reset cell error map when switching tabs
+
+  // console.log({ validationErrors });
 
   const { getRootProps, acceptedFiles, getInputProps, open } = useDropzone({
     onDrop,
     onDropAccepted(files) {
       const file = files[0];
-      if (!file) return;
+      if (!file || !activeType) return;
 
       if (file.name.endsWith(".xlsx")) {
-        handleExcelFileUpload(file, activeType as TFileType);
+        handleExcelFileUpload(file, activeType);
       } else {
-        handleCSVFileUpload(file, activeType as TFileType);
+        handleCSVFileUpload(file, activeType);
       }
     },
     noClick: true,
     noKeyboard: true,
   });
-  const clientErrors = validationErrors["client"] || [];
-  console.log({ clientErrors, cellErrorMap });
+
+  const detectEntityType = (headers: string[]): TFileType | null => {
+    const clientFields = ["ClientID", "ClientName", "PriorityLevel"];
+    const workerFields = ["WorkerID", "WorkerName", "Skills"];
+    const taskFields = ["TaskID", "TaskName", "Category"];
+
+    if (clientFields.every((field) => headers.includes(field))) return "client";
+    if (workerFields.every((field) => headers.includes(field))) return "worker";
+    if (taskFields.every((field) => headers.includes(field))) return "tasks";
+
+    return null;
+  };
 
   return (
-    <div className="flex items-center justify-center w-full h-screen overflow-hidden">
-      <div className="w-full h-full overflow-y-auto space-y-4">
+    <div className="flex items-center justify-center w-full ">
+      <div className="w-full h-full space-y-4">
         <h1 className="leading-none mt-10 tracking-tight text-5xl font-black text-center">
           Upload Client CSV or Excel File <br /> Edit and Validate and Export
         </h1>
@@ -249,6 +277,10 @@ const Page = () => {
             {(["client", "tasks", "worker"] as const).map((type) => (
               <div
                 key={type}
+                onClick={() => {
+                  setActiveType(type);
+                  open();
+                }}
                 className="border bg-white max-w-md w-full h-[320px]  p-4 rounded-3xl border-neutral-200 shadow-xl flex flex-col justify-start"
               >
                 <div className="border-2 border-dashed rounded-2xl border-neutral-200 w-full flex flex-col items-center justify-center px-3 pb-8 max-w-sm ">
@@ -259,13 +291,7 @@ const Page = () => {
                   <span className="text-center text-neutral-800 mt-6 font-medium leading-tight text-lg tracking-tight ">
                     Drop {capitalizeFirstLetter(type)} CSV or Excel file here,
                     or{" "}
-                    <button
-                      className="text-blue-600 hover:underline"
-                      onClick={() => {
-                        setActiveType(type);
-                        open();
-                      }}
-                    >
+                    <button className="text-blue-600 hover:underline">
                       Browse
                     </button>
                   </span>
@@ -279,278 +305,40 @@ const Page = () => {
           <input {...getInputProps()} />
         </div>
 
-        {Object.entries(cellErrorMap)?.length > 0 && (
-          <div className="max-w-4xl mx-auto w-full px-6 py-6 bg-red-100 rounded-2xl space-y-4">
-            {Object.entries(cellErrorMap)?.map(([k, v], i) => {
+        <div className="max-w-5xl h-screen w-full mx-auto">
+          {Object.entries(entityData)
+            ?.filter(([k, v]) => v.rows.length > 0)
+            .map(([k, v]) => {
               return (
-                <div key={i}>
-                  <h3 className="text-red-600 font-semibold">
-                    {k} ({Object.keys(v).length}) Errors:
-                  </h3>
-                  <ul className="list-disc pl-5">
-                    {Object.values(v)
-                      ?.slice(0, 10)
-                      ?.map((error, index) => (
-                        <li key={index} className="text-red-500">
-                          {error}
-                        </li>
-                      ))}
-                  </ul>
-                </div>
+                <DataTable
+                  key={k}
+                  rows={v.rows}
+                  columns={v.columns}
+                  dataSet={{
+                    client: entityData.client.rows,
+                    worker: entityData.worker.rows,
+                    tasks: entityData.tasks.rows,
+                  }}
+                  entityType={k as TFileType}
+                  validationErrors={validationErrors[k as TFileType] || []}
+                  onValidationErrorsChange={(entityType, errors) => {
+                    setValidationErrors((prev) => ({
+                      ...prev,
+                      [entityType]: errors,
+                    }));
+                  }}
+                />
               );
             })}
-          </div>
-        )}
-
-        <Tabs defaultValue={"client"}>
-          <TabsList className="w-full max-w-4xl mx-auto">
-            <TabsTrigger value="client">Client</TabsTrigger>
-            <TabsTrigger value="tasks">Tasks</TabsTrigger>
-            <TabsTrigger value="worker">Worker</TabsTrigger>
-          </TabsList>
-          <TabsContent value="client">
-            {rows?.length > 0 && (
-              <div
-                className="  w-full max-w-5xl mx-auto"
-                style={{ height: 500, width: "100%" }}
-              >
-                <div className="mb-4">
-                  <Button
-                    onClick={() => {
-                      gridApi?.applyTransaction({
-                        add: [{}], // Add an empty row
-                      });
-                    }}
-                    variant={"outline"}
-                    className=""
-                  >
-                    <Plus /> Add Row
-                  </Button>
-                </div>
-                <AgGridReact
-                  theme={myTheme}
-                  autoSizeStrategy={{
-                    type: "fitCellContents",
-                  }}
-                  rowClass={"ag-row"}
-                  rowSelection={"multiple"}
-                  columnDefs={dynamicColumns}
-                  enableBrowserTooltips={true}
-                  rowData={rows}
-                  getRowId={(params) =>
-                    (params.data.ClientID ||
-                      params.data.TaskID ||
-                      params.data.WorkerID) as string
-                  }
-                  onGridReady={(params) => {
-                    setGridApi(params.api);
-                    console.log("initialized grid api");
-                  }}
-                  onCellValueChanged={(params) => {
-                    console.log(params);
-                    const updatedRow = params.data;
-                    const rowIndex = params.node.rowIndex as number;
-
-                    const { success, error } =
-                      clientSchema.safeParse(updatedRow);
-
-                    const errorMap = { ...cellErrorMap };
-                    Object.keys(errorMap).forEach((field) => {
-                      delete errorMap[field]?.[rowIndex];
-                    });
-                    if (!success && error) {
-                      const validationError: TValidationErrorProps = {
-                        type: "ZodValidationError",
-                        entity: "client",
-                        error: error.errors.map((e) => e.message).join(", "),
-                        affectedRows: [rowIndex],
-                        affectedFields: error.errors.map((e) =>
-                          String(e.path[0])
-                        ),
-                      };
-                      const cellErrors = getCellErrorMap([validationError]);
-                      Object.entries(cellErrors).forEach(
-                        ([field, rowErrors]) => {
-                          if (!errorMap[field]) errorMap[field] = {};
-                          errorMap[field][rowIndex] = rowErrors[rowIndex];
-                        }
-                      );
-                      setCellErrorMap(errorMap);
-                      params?.api.refreshCells({ force: true });
-                    }
-
-                    gridApi?.applyTransaction({
-                      update: [updatedRow],
-                    });
-
-                    console.log("Transaction applied for:", updatedRow);
-                  }}
-                />
-              </div>
-            )}
-          </TabsContent>
-          <TabsContent value="tasks">
-            {rows?.length > 0 && (
-              <div
-                className="  w-full max-w-4xl mx-auto"
-                style={{ height: 500, width: "100%" }}
-              >
-                <div className="mb-4">
-                  <Button
-                    onClick={() => {
-                      gridApi?.applyTransaction({
-                        add: [{}], // Add an empty row
-                      });
-                    }}
-                    variant={"outline"}
-                    className=""
-                  >
-                    <Plus /> Add Row
-                  </Button>
-                </div>
-                <AgGridReact
-                  theme={myTheme}
-                  rowSelection={"multiple"}
-                  columnDefs={dynamicColumns}
-                  enableBrowserTooltips={true}
-                  rowData={rows}
-                  getRowId={(params) =>
-                    (params.data.ClientID ||
-                      params.data.TaskID ||
-                      params.data.WorkerID) as string
-                  }
-                  onGridReady={(params) => {
-                    setGridApi(params.api);
-                    console.log("initialized grid api");
-                  }}
-                  onCellValueChanged={(params) => {
-                    console.log(params);
-                    const updatedRow = params.data;
-                    const rowIndex = params.node.rowIndex as number;
-
-                    const { success, error } =
-                      clientSchema.safeParse(updatedRow);
-
-                    const errorMap = { ...cellErrorMap };
-                    Object.keys(errorMap).forEach((field) => {
-                      delete errorMap[field]?.[rowIndex];
-                    });
-                    if (!success && error) {
-                      const validationError: TValidationErrorProps = {
-                        type: "ZodValidationError",
-                        entity: "tasks",
-                        error: error.errors.map((e) => e.message).join(", "),
-                        affectedRows: [rowIndex],
-                        affectedFields: error.errors.map((e) =>
-                          String(e.path[0])
-                        ),
-                      };
-                      const cellErrors = getCellErrorMap([validationError]);
-                      Object.entries(cellErrors).forEach(
-                        ([field, rowErrors]) => {
-                          if (!errorMap[field]) errorMap[field] = {};
-                          errorMap[field][rowIndex] = rowErrors[rowIndex];
-                        }
-                      );
-                      setCellErrorMap(errorMap);
-                      params?.api.refreshCells({ force: true });
-                    }
-
-                    gridApi?.applyTransaction({
-                      update: [updatedRow],
-                    });
-
-                    console.log("Transaction applied for:", updatedRow);
-                  }}
-                />
-              </div>
-            )}
-          </TabsContent>
-          <TabsContent value="worker">
-            {rows?.length > 0 && (
-              <div
-                className="  w-full max-w-4xl mx-auto"
-                style={{ height: 500, width: "100%" }}
-              >
-                <div className="mb-4">
-                  <Button
-                    onClick={() => {
-                      gridApi?.applyTransaction({
-                        add: [{}], // Add an empty row
-                      });
-                    }}
-                    variant={"outline"}
-                    className=""
-                  >
-                    <Plus /> Add Row
-                  </Button>
-                </div>
-                <AgGridReact
-                  theme={myTheme}
-                  rowSelection={"multiple"}
-                  columnDefs={dynamicColumns}
-                  enableBrowserTooltips={true}
-                  rowData={rows}
-                  getRowId={(params) =>
-                    (params.data.ClientID ||
-                      params.data.TaskID ||
-                      params.data.WorkerID) as string
-                  }
-                  onGridReady={(params) => {
-                    setGridApi(params.api);
-                    console.log("initialized grid api");
-                  }}
-                  onCellValueChanged={(params) => {
-                    console.log(params);
-                    const updatedRow = params.data;
-                    const rowIndex = params.node.rowIndex as number;
-
-                    const { success, error } =
-                      clientSchema.safeParse(updatedRow);
-
-                    const errorMap = { ...cellErrorMap };
-                    Object.keys(errorMap).forEach((field) => {
-                      delete errorMap[field]?.[rowIndex];
-                    });
-                    if (!success && error) {
-                      const validationError: TValidationErrorProps = {
-                        type: "ZodValidationError",
-                        entity: "tasks",
-                        error: error.errors.map((e) => e.message).join(", "),
-                        affectedRows: [rowIndex],
-                        affectedFields: error.errors.map((e) =>
-                          String(e.path[0])
-                        ),
-                      };
-                      const cellErrors = getCellErrorMap([validationError]);
-                      Object.entries(cellErrors).forEach(
-                        ([field, rowErrors]) => {
-                          if (!errorMap[field]) errorMap[field] = {};
-                          errorMap[field][rowIndex] = rowErrors[rowIndex];
-                        }
-                      );
-                      setCellErrorMap(errorMap);
-                      params?.api.refreshCells({ force: true });
-                    }
-
-                    gridApi?.applyTransaction({
-                      update: [updatedRow],
-                    });
-
-                    console.log("Transaction applied for:", updatedRow);
-                  }}
-                />
-              </div>
-            )}
-          </TabsContent>
-        </Tabs>
+        </div>
       </div>
       {/* {rows?.length > 0 &&
        } */}
       <Sidebar
-        rows={rows}
+        rows={activeType ? entityData[activeType].rows : []}
         validationErrors={validationErrors}
         files={fullDataSet}
+        entityData={entityData}
       />
     </div>
   );
@@ -559,6 +347,7 @@ type SidebarProps = {
   rows: any[];
   validationErrors: Record<TFileType, TValidationErrorProps[] | null>;
   files: Record<TFileType, TFileProps>;
+  entityData: Record<TFileType, { rows: any[]; columns: string[] }>;
 };
 
 interface Message {
@@ -567,7 +356,7 @@ interface Message {
 }
 
 // The main App component combining UI and chat logic
-function Sidebar({ rows, validationErrors, files }: SidebarProps) {
+function Sidebar({ rows, validationErrors, files, entityData }: SidebarProps) {
   // State to store all chat messages
   const [messages, setMessages] = useState<Message[]>([]);
   // State to store the current input value of the message
@@ -783,23 +572,21 @@ function Sidebar({ rows, validationErrors, files }: SidebarProps) {
   );
 }
 
-const CustomCellRenderer: FC<ICellRendererParams> = ({
+export const CustomCellRenderer: FC<ICellRendererParams> = ({
   api,
   value,
   column,
 }) => {
   const cols = api.getAllDisplayedColumns();
-  const isLastColumn = cols[cols.length - 1]?.getId() === column?.getId();
+  const isLastColumn = cols[0]?.getId() === column?.getId();
   return (
-    <div className="relative text-lg font-inter">
-      {value}
-      {isLastColumn && (
-        <div className=" z-50 bg-red-500">
-          <Button size={"icon"} variant={"outline"}>
-            <Trash2 />
-          </Button>
-        </div>
+    <div
+      className={cn(
+        "relative flex flex-row text-lg font-inter "
+        // isLastColumn && "bg-red-500"
       )}
+    >
+      {value}
     </div>
   );
 };
