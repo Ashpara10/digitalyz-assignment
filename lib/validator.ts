@@ -36,7 +36,7 @@ export class DataValidator {
     this.headers = headers;
     this.fileType = fileType;
     this.schema = this.getSchemaForFileType(fileType);
-    console.log({ here: "Inside Validator", rows: this.rows });
+    // console.log({ here: "Inside Validator", rows: this.rows });
   }
 
   public runAllValidationsOnRow(row: IRowNode<any>) {
@@ -53,7 +53,7 @@ export class DataValidator {
     // allErrors.push(...this.validatePhaseSlotSaturation());
     // allErrors.push(...this.validateMaxConcurrency());
 
-    console.log({ allErrors });
+    // console.log({ allErrors });
     return allErrors;
   }
 
@@ -78,7 +78,7 @@ export class DataValidator {
       allErrors.push(...this.validateSkillCoverage());
     });
 
-    console.log(`Total errors found: ${allErrors.length}`, allErrors);
+    // console.log(`Total errors found: ${allErrors.length}`, allErrors);
 
     // 4. Build cell error map
     const cellErrorMap = getCellErrorMap(allErrors);
@@ -128,35 +128,23 @@ export class DataValidator {
     const errors: TValidationErrorProps[] = [];
 
     const currentId = data?.data?.[idField];
-    console.log(
-      `Validating duplicate IDs for ${idField}: ${currentId} in row ${data?.rowIndex}`
-    );
 
     if (!currentId) {
-      console.log(`No ID found for row ${data?.rowIndex}`);
-      return errors; // Skip if no ID found
+      return errors;
     }
 
-    // Check if this ID already exists in other rows in the data array
     const existingIds = new Set<string>();
 
-    // Collect all IDs from the rows array (excluding the current row being validated)
     this.rows.forEach((row, index) => {
       if (index !== data.rowIndex) {
         // Skip the current row
         const existingId = row[idField];
         if (existingId) {
           existingIds.add(existingId);
-          console.log(`Found existing ID: ${existingId} in row ${index}`);
+          // console.log(`Found existing ID: ${existingId} in row ${index}`);
         }
       }
     });
-
-    console.log(`Existing IDs:`, Array.from(existingIds));
-    console.log(
-      `Current ID ${currentId} is duplicate:`,
-      existingIds.has(currentId)
-    );
 
     // Check if current ID is a duplicate
     if (existingIds.has(currentId)) {
@@ -167,7 +155,6 @@ export class DataValidator {
         affectedRows: [data?.rowIndex as number],
         affectedFields: [idField],
       });
-      console.log(`Added duplicate error for ${currentId}`);
     }
 
     return errors;
@@ -279,15 +266,9 @@ export class DataValidator {
   private validateWithZod(row: IRowNode<any>): TValidationErrorProps[] {
     const errors: TValidationErrorProps[] = [];
 
-    console.log(`Validating row ${row.rowIndex} with data:`, row.data);
     const results = this.schema.safeParse(row.data);
-    console.log(`Zod validation results for row ${row.rowIndex}:`, results);
 
     if (!results.success) {
-      console.log(
-        `Zod validation failed for row ${row.rowIndex}:`,
-        results.error.errors
-      );
       errors.push({
         type: "ZodValidationError",
         entity: this.fileType,
@@ -353,22 +334,16 @@ export class DataValidator {
     }
 
     const taskIds = new Set(this.context.tasks.map((t) => t.TaskID));
-    console.log({ taskIds });
-
-    // this.context.client.forEach((client, index) => {
-    //   const requestedTasks =
-    //     client.RequestedTaskIDs?.split(",").map((t: string) => t.trim()) || [];
 
     const requestedTasks = this.context?.client?.map((client, index) => {
       return (
         client.RequestedTaskIDs?.split(",").map((t: string) => t.trim()) || []
       );
     });
-    console.log({ requestedTasks, flat: requestedTasks.flat() });
+
     const unknownTasks = requestedTasks
       .flat()
       .filter((taskId: string) => !taskIds.has(taskId));
-    console.log({ unknownTasks });
 
     if (unknownTasks.length > 0) {
       errors.push({

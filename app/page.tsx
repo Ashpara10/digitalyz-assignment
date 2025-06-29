@@ -14,8 +14,15 @@ import {
   ModuleRegistry,
 } from "ag-grid-community";
 import { parse } from "papaparse";
-import React, { FC, memo, useEffect, useRef, useState } from "react";
-import { useDropzone } from "react-dropzone";
+import React, {
+  FC,
+  memo,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { FileRejection, FileWithPath, useDropzone } from "react-dropzone";
 import * as XLSX from "xlsx";
 
 import { BusinessRulesPanel } from "@/components/business-rules-panel";
@@ -40,7 +47,7 @@ import {
   runCoreValidations,
 } from "@/lib/utils";
 import { themeBalham } from "ag-grid-community";
-import { Trash2 } from "lucide-react";
+import { Trash2, Upload } from "lucide-react";
 
 type TFileProps = File[] | null;
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -100,8 +107,10 @@ const Page = () => {
   const currentColumns = currentEntityData.columns;
 
   const onDrop = React.useCallback(
-    (acceptedFiles: File[]) => {
-      if (!activeType) return;
+    (acceptedFiles: File[], activeType: TFileType) => {
+      // console.log({ acceptedFiles, activeType });
+      if (acceptedFiles.length === 0) return;
+      setActiveType(activeType);
       setFullDataSet((prev) => ({
         ...prev,
         [activeType]: acceptedFiles,
@@ -116,8 +125,6 @@ const Page = () => {
       skipEmptyLines: true,
       complete: (results) => {
         console.log("Parsed Results:", results);
-
-        //Parse Error :Quotes,Delimiter,Field Mismatch, etc.
 
         if (results?.errors.length > 0) {
           setValidationErrors((prev) => ({
@@ -230,31 +237,12 @@ const Page = () => {
     }
   };
 
-  // useEffect(() => {
-  //   if (!gridApi || !activeType) return;
-
-  //   const errors = runZodValidations(gridApi, activeType);
-  //   const map = getCellErrorMap(errors);
-  //   setCellErrorMap(map);
-
-  //   gridApi.refreshCells({
-  //     force: true,
-  //   });
-  //   setValidationErrors((prev) => ({
-  //     ...prev,
-  //     [activeType]: [...errors],
-  //   }));
-  // }, [gridApi, activeType, entityData]);
-
-  // Reset cell error map when switching tabs
-
-  // console.log({ validationErrors });
-
-  const { getRootProps, acceptedFiles, getInputProps, open } = useDropzone({
-    onDrop,
-    onDropAccepted(files) {
+  const handleDropAccepted = useCallback(
+    (files: FileWithPath[]) => {
       const file = files[0];
+      console.log("before");
       if (!file || !activeType) return;
+      console.log("after");
 
       if (file.name.endsWith(".xlsx")) {
         handleExcelFileUpload(file, activeType);
@@ -262,9 +250,8 @@ const Page = () => {
         handleCSVFileUpload(file, activeType);
       }
     },
-    noClick: true,
-    noKeyboard: true,
-  });
+    [activeType]
+  );
 
   const detectEntityType = (headers: string[]): TFileType | null => {
     const clientFields = ["ClientID", "ClientName", "PriorityLevel"];
@@ -309,17 +296,18 @@ const Page = () => {
           Upload CSV & Excel Files <br /> Edit and Validate and Export
         </h1>
       </div>
-
+      {/* 
       <div {...getRootProps()} style={{ display: "none" }}>
         <input {...getInputProps()} />
-      </div>
+      </div> */}
 
       {Object.keys(entityData).map((key, index) => {
         return (
           <EntityContainer
             key={index}
             setActiveType={setActiveType}
-            open={open}
+            onDropAccepted={handleDropAccepted}
+            onDrop={onDrop}
             rows={entityData[key as TFileType].rows}
             entityType={key as TFileType}
             validationErrors={validationErrors[key as TFileType] || []}
@@ -414,7 +402,6 @@ type TEntityContainerProps = {
   files: TFileProps;
   setFiles: (files: TFileProps) => void;
   setActiveType: (type: TFileType) => void;
-  open: () => void;
   entityData: Record<TFileType, { rows: any[]; columns: string[] }>;
   setEntityData: (
     updater: (
@@ -425,6 +412,8 @@ type TEntityContainerProps = {
     entityType: TFileType,
     errors: TValidationErrorProps[]
   ) => void;
+  onDropAccepted: (files: FileWithPath[]) => void;
+  onDrop: (files: File[], activeType: TFileType) => void;
 };
 
 const MemoizedDataTable = memo(DataTable);
@@ -433,12 +422,19 @@ const EntityContainer = ({
   rows,
   validationErrors,
   setActiveType,
-  open,
+  onDropAccepted,
+  onDrop,
   entityData,
   setFiles,
   setEntityData,
   onValidationErrorsChange,
 }: TEntityContainerProps) => {
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop: (files) => {
+      onDrop(files, entityType);
+    },
+    onDropAccepted,
+  });
   return (
     <section className="w-full my-8  border-b pb-10 md:pb-16 border-neutral-300 tracking-tight">
       <div
@@ -450,27 +446,29 @@ const EntityContainer = ({
             {capitalizeFirstLetter(entityType)}
           </h2>
 
-          <div>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => {
-                // Clear files for this entity
-                setFiles(null);
+          {rows.length > 0 && (
+            <div>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => {
+                  // Clear files for this entity
+                  setFiles(null);
 
-                // Clear rows and columns for this entity
-                setEntityData((prev) => ({
-                  ...prev,
-                  [entityType]: { rows: [], columns: [] },
-                }));
+                  // Clear rows and columns for this entity
+                  setEntityData((prev) => ({
+                    ...prev,
+                    [entityType]: { rows: [], columns: [] },
+                  }));
 
-                // Clear validation errors for this entity
-                onValidationErrorsChange(entityType, []);
-              }}
-            >
-              <Trash2 className="size-4" />
-            </Button>
-          </div>
+                  // Clear validation errors for this entity
+                  onValidationErrorsChange(entityType, []);
+                }}
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            </div>
+          )}
         </div>
       </div>
       <div className="max-w-4xl w-full mx-auto">
@@ -493,15 +491,32 @@ const EntityContainer = ({
           />
         ) : (
           <div
-            onClick={() => {
-              setActiveType(entityType);
-              open();
-            }}
-            className="w-full h-[500px] flex items-center justify-center border-2 border-dashed border-neutral-300 rounded-2xl cursor-pointer"
+            {...getRootProps()}
+            className={cn(
+              "w-full h-[500px] flex items-center justify-center border-4 border-dashed border-neutral-300 rounded-2xl cursor-pointer",
+              isDragActive && "bg-lime-50",
+              validationErrors.length > 0 && "bg-red-50 border-red-500"
+            )}
           >
-            <span className="text-lg font-medium tracking-tight">
-              No {capitalizeFirstLetter(entityType)} data
-            </span>
+            <input className="hidden" {...getInputProps()} />
+            <div className="flex flex-col items-center justify-center">
+              <Upload
+                strokeWidth={1.2}
+                className="size-20 mb-4 stroke-neutral-900"
+              />
+              <span className="text-xl font-medium tracking-tight leading-tight mb-4">
+                Drag and drop your {capitalizeFirstLetter(entityType)} <br />{" "}
+                data here or click to upload
+              </span>
+
+              {validationErrors.length > 0 && (
+                <div className="font-medium flex flex-col space-y-2 tracking-tight text-red-500">
+                  {validationErrors.map((error, i) => {
+                    return <span key={i}>{error.error}</span>;
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
