@@ -4,6 +4,7 @@ import {
   TValidationErrorProps,
   CellErrorMap,
   REQUIRED_COLUMNS,
+  TClient,
 } from "@/lib/types";
 import { checkMissingColumns, getCellErrorMap } from "@/lib/utils";
 import { clientSchema, taskSchema, workerSchema } from "@/lib/types";
@@ -44,7 +45,14 @@ export class DataValidator {
     allErrors.push(...this.validateWithZod(row));
     allErrors.push(...this.validateBrokenJSON(row, this.fileType));
     allErrors.push(...this.validateDuplicateIDs(row));
-    // const cellErrorMap = getCellErrorMap(allErrors);
+    allErrors.push(...this.validateOutOfRangeValues(row, this.fileType));
+    allErrors.push(...this.validateMalformedLists(row, this.fileType));
+    allErrors.push(...this.validateUnknownReferences(row));
+    allErrors.push(...this.validateSkillCoverage());
+    // allErrors.push(...this.validateOverloadedWorkers());
+    // allErrors.push(...this.validatePhaseSlotSaturation());
+    // allErrors.push(...this.validateMaxConcurrency());
+
     console.log({ allErrors });
     return allErrors;
   }
@@ -54,17 +62,20 @@ export class DataValidator {
     cellErrorMap: CellErrorMap;
   } {
     const allErrors: TValidationErrorProps[] = [];
-    console.log(
-      `Running validation for ${
-        this.fileType
-      } with ${this.gridApi?.getDisplayedRowCount()} rows`
-    );
 
-    this.gridApi?.forEachNode((node) => {
-      console.log(`Validating row ${node.rowIndex}:`, node?.data);
-      allErrors.push(...this.validateWithZod(node));
-      allErrors.push(...this.validateBrokenJSON(node, this.fileType));
-      allErrors.push(...this.validateDuplicateIDs(node));
+    this.rows.forEach((row, index) => {
+      const mockNode = {
+        data: row,
+        rowIndex: index,
+      } as IRowNode<any>;
+
+      allErrors.push(...this.validateWithZod(mockNode));
+      allErrors.push(...this.validateBrokenJSON(mockNode, this.fileType));
+      allErrors.push(...this.validateDuplicateIDs(mockNode));
+      allErrors.push(...this.validateOutOfRangeValues(mockNode, this.fileType));
+      allErrors.push(...this.validateMalformedLists(mockNode, this.fileType));
+      allErrors.push(...this.validateUnknownReferences(mockNode));
+      allErrors.push(...this.validateSkillCoverage());
     });
 
     console.log(`Total errors found: ${allErrors.length}`, allErrors);
@@ -116,7 +127,6 @@ export class DataValidator {
     const idField = this.getIdField(this.fileType);
     const errors: TValidationErrorProps[] = [];
 
-    // Get the ID from the current row
     const currentId = data?.data?.[idField];
     console.log(
       `Validating duplicate IDs for ${idField}: ${currentId} in row ${data?.rowIndex}`
@@ -127,19 +137,17 @@ export class DataValidator {
       return errors; // Skip if no ID found
     }
 
-    // Check if this ID already exists in other rows in the grid
+    // Check if this ID already exists in other rows in the data array
     const existingIds = new Set<string>();
 
-    // Collect all IDs from the grid (excluding the current row being validated)
-    this.gridApi?.forEachNode((node) => {
-      if (node.rowIndex !== data.rowIndex) {
+    // Collect all IDs from the rows array (excluding the current row being validated)
+    this.rows.forEach((row, index) => {
+      if (index !== data.rowIndex) {
         // Skip the current row
-        const existingId = node.data?.[idField];
+        const existingId = row[idField];
         if (existingId) {
           existingIds.add(existingId);
-          console.log(
-            `Found existing ID: ${existingId} in row ${node.rowIndex}`
-          );
+          console.log(`Found existing ID: ${existingId} in row ${index}`);
         }
       }
     });
@@ -166,76 +174,76 @@ export class DataValidator {
   }
 
   private validateMalformedLists(
-    data: any[],
+    data: IRowNode<any>,
     type: TFileType
   ): TValidationErrorProps[] {
     const errors: TValidationErrorProps[] = [];
 
     if (type === "worker") {
-      data.forEach((row, index) => {
-        try {
-          const slots = JSON.parse(row.AvailableSlots);
-          if (
-            !Array.isArray(slots) ||
-            !slots.every((s) => typeof s === "number")
-          ) {
-            errors.push({
-              type: "MalformedList",
-              entity: type,
-              error: `AvailableSlots must be a valid array of numbers`,
-              affectedRows: [index],
-              affectedFields: ["AvailableSlots"],
-            });
-          }
-        } catch {
+      // data.forEach((row, index) => {
+      try {
+        const slots = JSON.parse(data.data.AvailableSlots);
+        if (
+          !Array.isArray(slots) ||
+          !slots.every((s) => typeof s === "number")
+        ) {
           errors.push({
             type: "MalformedList",
             entity: type,
-            error: `AvailableSlots must be valid JSON array`,
-            affectedRows: [index],
+            error: `AvailableSlots must be a valid array of numbers`,
+            affectedRows: [data.rowIndex as number],
             affectedFields: ["AvailableSlots"],
           });
         }
-      });
+      } catch (error) {
+        errors.push({
+          type: "MalformedList",
+          entity: type,
+          error: `AvailableSlots must be valid JSON array`,
+          affectedRows: [data.rowIndex as number],
+          affectedFields: ["AvailableSlots"],
+        });
+      }
+      // });
     }
 
     return errors;
   }
 
   private validateOutOfRangeValues(
-    data: any[],
+    data: IRowNode<any>,
     type: TFileType
   ): TValidationErrorProps[] {
     const errors: TValidationErrorProps[] = [];
 
     if (type === "client") {
-      data.forEach((row, index) => {
-        const priority = parseInt(row.PriorityLevel);
-        if (isNaN(priority) || priority < 1 || priority > 5) {
-          errors.push({
-            type: "OutOfRangeValue",
-            entity: type,
-            error: `PriorityLevel must be between 1 and 5`,
-            affectedRows: [index],
-            affectedFields: ["PriorityLevel"],
-          });
-        }
-      });
+      // data.forEach((row, index) => {
+      const priority = parseInt(data.data.PriorityLevel);
+      if (isNaN(priority) || priority < 1 || priority > 5) {
+        errors.push({
+          type: "OutOfRangeValue",
+          entity: type,
+          error: `PriorityLevel must be between 1 and 5`,
+          affectedRows: [data.rowIndex as number],
+          affectedFields: ["PriorityLevel"],
+        });
+      }
+      // });
     }
 
     if (type === "tasks") {
-      data.forEach((row, index) => {
-        const duration = parseInt(row.Duration);
-        if (isNaN(duration) || duration < 1) {
-          errors.push({
-            type: "OutOfRangeValue",
-            entity: type,
-            error: `Duration must be at least 1`,
-            affectedRows: [index],
-            affectedFields: ["Duration"],
-          });
-        }
-      });
+      // data.forEach((row, index) => {
+      const duration = parseInt(data.data.Duration);
+      if (isNaN(duration) || duration < 1) {
+        errors.push({
+          type: "OutOfRangeValue",
+          entity: type,
+          error: `Duration must be at least 1`,
+          affectedRows: [data.rowIndex as number],
+          affectedFields: ["Duration"],
+        });
+      }
+      // });
     }
 
     return errors;
@@ -271,10 +279,15 @@ export class DataValidator {
   private validateWithZod(row: IRowNode<any>): TValidationErrorProps[] {
     const errors: TValidationErrorProps[] = [];
 
-    // rows.forEach((row, idx) => {
+    console.log(`Validating row ${row.rowIndex} with data:`, row.data);
     const results = this.schema.safeParse(row.data);
-    console.log({ results });
+    console.log(`Zod validation results for row ${row.rowIndex}:`, results);
+
     if (!results.success) {
+      console.log(
+        `Zod validation failed for row ${row.rowIndex}:`,
+        results.error.errors
+      );
       errors.push({
         type: "ZodValidationError",
         entity: this.fileType,
@@ -285,7 +298,6 @@ export class DataValidator {
         ),
       });
     }
-    // });
 
     return errors;
   }
@@ -331,28 +343,42 @@ export class DataValidator {
     return idFields[type];
   }
 
-  private validateUnknownReferences(): TValidationErrorProps[] {
+  private validateUnknownReferences(
+    node: IRowNode<any>
+  ): TValidationErrorProps[] {
     const errors: TValidationErrorProps[] = [];
+
+    if (this.context.tasks.length === 0 || this.context.client.length === 0) {
+      return errors;
+    }
+
     const taskIds = new Set(this.context.tasks.map((t) => t.TaskID));
+    console.log({ taskIds });
 
-    // Check client requested tasks
-    this.context.client.forEach((client, index) => {
-      const requestedTasks =
-        client.RequestedTaskIDs?.split(",").map((t: string) => t.trim()) || [];
-      const unknownTasks = requestedTasks.filter(
-        (taskId: string) => !taskIds.has(taskId)
+    // this.context.client.forEach((client, index) => {
+    //   const requestedTasks =
+    //     client.RequestedTaskIDs?.split(",").map((t: string) => t.trim()) || [];
+
+    const requestedTasks = this.context?.client?.map((client, index) => {
+      return (
+        client.RequestedTaskIDs?.split(",").map((t: string) => t.trim()) || []
       );
-
-      if (unknownTasks.length > 0) {
-        errors.push({
-          type: "UnknownTaskReference",
-          entity: "client",
-          error: `Unknown task IDs: ${unknownTasks.join(", ")}`,
-          affectedRows: [index],
-          affectedFields: ["RequestedTaskIDs"],
-        });
-      }
     });
+    console.log({ requestedTasks, flat: requestedTasks.flat() });
+    const unknownTasks = requestedTasks
+      .flat()
+      .filter((taskId: string) => !taskIds.has(taskId));
+    console.log({ unknownTasks });
+
+    if (unknownTasks.length > 0) {
+      errors.push({
+        type: "UnknownTaskReference",
+        entity: "client",
+        error: `Unknown task IDs: ${unknownTasks.join(", ")}`,
+        affectedRows: [node?.rowIndex as number],
+        affectedFields: ["RequestedTaskIDs"],
+      });
+    }
 
     return errors;
   }
@@ -360,6 +386,10 @@ export class DataValidator {
   private validateSkillCoverage(): TValidationErrorProps[] {
     const errors: TValidationErrorProps[] = [];
     const workerSkills = new Set<string>();
+
+    if (this.context.worker.length === 0) {
+      return errors;
+    }
 
     this.context.worker.forEach((worker) => {
       const skills =

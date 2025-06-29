@@ -1,23 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Edit2, Save, X, AlertTriangle } from "lucide-react";
-import { capitalizeFirstLetter, cn, getCellErrorMap } from "@/lib/utils";
-import { AgGridReact } from "ag-grid-react";
-import { CellValueChangedEvent, ColDef, GridApi } from "ag-grid-community";
-import { DataValidator } from "@/lib/validator";
-import { CellErrorMap, TFileType, TValidationErrorProps } from "@/lib/types";
 import { CustomCellRenderer } from "@/app/page";
+import { CellErrorMap, TFileType, TValidationErrorProps } from "@/lib/types";
+import { capitalizeFirstLetter, getCellErrorMap } from "@/lib/utils";
+import { DataValidator } from "@/lib/validator";
+import { CellValueChangedEvent, ColDef, GridApi } from "ag-grid-community";
+import { AgGridReact } from "ag-grid-react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { ValidationPanel } from "./validation-panel";
 
 interface DataTableProps {
   rows: any[];
@@ -44,8 +34,8 @@ export function DataTable({
   onValidationErrorsChange,
 }: DataTableProps) {
   const [gridApi, setGridApi] = useState<GridApi | null>(null);
-
   const [cellErrorMap, setCellErrorMap] = useState<CellErrorMap>({});
+
   const validator = useMemo(
     () => new DataValidator(dataSet, rows, columns, entityType),
     [dataSet, rows, columns, entityType]
@@ -60,7 +50,7 @@ export function DataTable({
           sortable: true,
           filter: true,
           editable: true,
-          cellRenderer: CustomCellRenderer,
+          cellRenderer: memo(CustomCellRenderer),
           cellClassRules: {
             "ag-cell-error": (params) => {
               const rowIndex = params.node.rowIndex as number;
@@ -78,6 +68,7 @@ export function DataTable({
     if (!gridApi) return;
 
     const { errors, cellErrorMap } = validator.runAllValidationsOnRows();
+    console.log({ cellErrorMap });
     setCellErrorMap(cellErrorMap);
     onValidationErrorsChange(entityType, errors);
 
@@ -85,6 +76,7 @@ export function DataTable({
       force: true,
     });
   }, [gridApi, rows, columns]);
+
   console.log({ cellErrorMap, validationErrors });
 
   const onCellValueChanged = useCallback((params: CellValueChangedEvent) => {
@@ -101,66 +93,33 @@ export function DataTable({
 
   return (
     <div className="">
-      <div className="mb-2 px-4 py-2">
-        <h2 className="text-xl font-semibold tracking-tight">
-          {capitalizeFirstLetter(entityType)}
-        </h2>
-      </div>
+      <ValidationPanel cellErrorMap={cellErrorMap} />
 
-      {Object.entries(cellErrorMap)?.length > 0 && (
-        <div className="max-w-5xl mb-8 mx-auto w-full px-6 py-6 bg-red-100 rounded-2xl space-y-4">
-          {Object.entries(cellErrorMap)?.map(([k, v], i) => {
-            const errors = Object.values(v);
-            if (errors.length === 0) return null;
-            return (
-              <div key={i}>
-                <h3 className="text-red-600 font-semibold">
-                  {k} ({Object.keys(v).length}) Errors:
-                </h3>
-                <ul className="list-disc pl-5">
-                  {/* {errors && */}
-                  {errors?.slice(0, 10)?.map((error, index) => (
-                    <li key={index} className="text-red-500">
-                      {error}
-                    </li>
-                  ))}
-                  {/* ))} */}
-                </ul>
-              </div>
-            );
-          })}
+      <div className="max-w-5xl mx-auto w-full">
+        <div className="mb-4">
+          <h3 className="text-lg font-semibold mb-2">
+            {capitalizeFirstLetter(entityType)} Data Table
+          </h3>
         </div>
-      )}
 
-      <div
-        className="border-neutral-200 bg-neutral-100 border p-3 rounded-2xl"
-        style={{
-          height: 600,
-          overflowY: "auto",
-          width: "100%",
-          maxWidth: "100%",
-        }}
-      >
-        <AgGridReact
-          autoSizeStrategy={{
-            type: "fitCellContents",
-          }}
-          rowClass={"ag-row"}
-          rowSelection={"multiple"}
-          columnDefs={dynamicColumns}
-          enableBrowserTooltips={true}
-          rowData={rows}
-          getRowId={(params) =>
-            (params.data.ClientID ||
-              params.data.TaskID ||
-              params.data.WorkerID) as string
-          }
-          onGridReady={(params) => {
-            setGridApi(params.api);
-            validator.setGridApi(params.api);
-          }}
-          onCellValueChanged={onCellValueChanged}
-        />
+        <div style={{ height: 500, width: "100%" }}>
+          <AgGridReact
+            rowData={rows}
+            columnDefs={dynamicColumns}
+            onGridReady={(params) => {
+              setGridApi(params.api);
+              validator.setGridApi(params?.api);
+            }}
+            onCellValueChanged={onCellValueChanged}
+            rowSelection="multiple"
+            enableBrowserTooltips={true}
+            getRowId={(params) =>
+              (params.data.ClientID ||
+                params.data.TaskID ||
+                params.data.WorkerID) as string
+            }
+          />
+        </div>
       </div>
     </div>
   );

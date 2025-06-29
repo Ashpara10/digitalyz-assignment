@@ -1,6 +1,11 @@
 import { z } from "zod";
 export type TFileType = "client" | "tasks" | "worker";
 
+// Custom validation for non-empty strings
+const nonEmptyString = z.string().refine((val) => val.trim().length > 0, {
+  message: "This field is required and cannot be empty",
+});
+
 const commaSeparatedStringArray = z.string().transform((val) =>
   val
     .split(",")
@@ -74,11 +79,11 @@ export const REQUIRED_COLUMNS: Record<TFileType, string[]> = {
 };
 
 export const clientSchema = z.object({
-  ClientID: z.string().min(1),
-  ClientName: z.string().min(1),
-  PriorityLevel: z.coerce.number().int().min(1).max(5),
+  ClientID: nonEmptyString,
+  ClientName: nonEmptyString,
+  PriorityLevel: z.coerce.number().int(),
   RequestedTaskIDs: commaSeparatedStringArray,
-  GroupTag: z.string().min(1),
+  GroupTag: nonEmptyString,
   AttributesJSON: z.union([
     z.record(z.any()),
     z
@@ -100,16 +105,16 @@ export const clientSchema = z.object({
 export type TClient = z.infer<typeof clientSchema>;
 
 export const workerSchema = z.object({
-  WorkerID: z.string().min(1),
-  WorkerName: z.string().min(1),
+  WorkerID: nonEmptyString,
+  WorkerName: nonEmptyString,
   Skills: commaSeparatedStringArray,
   AvailableSlots: z
     .string()
     .transform((val) => JSON.parse(val))
     .pipe(z.array(z.number().int().positive())),
   MaxLoadPerPhase: z.coerce.number().int().nonnegative(),
-  WorkerGroup: z.string().min(1),
-  QualificationLevel: z.string().min(1),
+  WorkerGroup: nonEmptyString,
+  QualificationLevel: nonEmptyString,
 });
 
 const parsePreferredPhases = z.string().transform((val) => {
@@ -123,10 +128,10 @@ const parsePreferredPhases = z.string().transform((val) => {
 });
 
 export const taskSchema = z.object({
-  TaskID: z.string().min(1),
-  TaskName: z.string().min(1),
-  Category: z.string().min(1),
-  Duration: z.coerce.number().int().min(1),
+  TaskID: nonEmptyString,
+  TaskName: nonEmptyString,
+  Category: nonEmptyString,
+  Duration: z.coerce.number().int(),
   RequiredSkills: commaSeparatedStringArray,
   PreferredPhases: parsePreferredPhases.pipe(
     z.array(z.number().int().positive())

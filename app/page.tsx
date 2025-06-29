@@ -16,7 +16,7 @@ import {
 } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
 import { parse } from "papaparse";
-import React, { FC, useEffect, useMemo, useRef, useState } from "react";
+import React, { FC, memo, useEffect, useMemo, useRef, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import * as XLSX from "xlsx";
 
@@ -42,6 +42,15 @@ import {
 import { themeBalham } from "ag-grid-community";
 import { Plus, Trash2, Upload } from "lucide-react";
 import { DataTable } from "@/components/data-table";
+import { PrioritizationPanel } from "@/components/prioritization-panel";
+import { BusinessRulesPanel } from "@/components/business-rules-panel";
+import { ExportPanel } from "@/components/export-panel";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 
 type TFileProps = File[] | null;
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -69,12 +78,25 @@ const Page = () => {
   );
 
   const [validationErrors, setValidationErrors] = useState<
-    Record<TFileType, TValidationErrorProps[] | null>
+    Record<TFileType, TValidationErrorProps[]>
   >({
     client: [],
     tasks: [],
     worker: [],
   });
+
+  // Business rules state
+  const [businessRules, setBusinessRules] = useState<any[]>([]);
+
+  // Priorities state
+  const [priorities, setPriorities] = useState<
+    Record<TFileType, Record<string, number>>
+  >({
+    client: {},
+    worker: {},
+    tasks: {},
+  });
+
   const [activeType, setActiveType] = React.useState<TFileType | null>(null);
   const [gridApi, setGridApi] = React.useState<GridApi | null>(null);
   const [cellErrorMap, setCellErrorMap] = React.useState<CellErrorMap>({});
@@ -266,83 +288,237 @@ const Page = () => {
     return null;
   };
 
-  return (
-    <div className="flex items-center justify-center w-full ">
-      <div className="w-full h-full space-y-4">
-        <h1 className="leading-none mt-10 tracking-tight text-5xl font-black text-center">
-          Upload Client CSV or Excel File <br /> Edit and Validate and Export
-        </h1>
-        <div className="max-w-4xl flex flex-col mt-10 mx-auto w-full  gap-4 justify-center">
-          <div className="flex flex-col md:flex-row gap-4 justify-center items-center">
-            {(["client", "tasks", "worker"] as const).map((type) => (
-              <div
-                key={type}
-                onClick={() => {
-                  setActiveType(type);
-                  open();
-                }}
-                className="border bg-white max-w-md w-full h-[320px]  p-4 rounded-3xl border-neutral-200 shadow-xl flex flex-col justify-start"
-              >
-                <div className="border-2 border-dashed rounded-2xl border-neutral-200 w-full flex flex-col items-center justify-center px-3 pb-8 max-w-sm ">
-                  <Upload
-                    strokeWidth={1}
-                    className="size-16 mt-8 stroke-neutral-600"
-                  />
-                  <span className="text-center text-neutral-800 mt-6 font-medium leading-tight text-lg tracking-tight ">
-                    Drop {capitalizeFirstLetter(type)} CSV or Excel file here,
-                    or{" "}
-                    <button className="text-blue-600 hover:underline">
-                      Browse
-                    </button>
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-        {/* Hidden dropzone input */}
-        <div {...getRootProps()} style={{ display: "none" }}>
-          <input {...getInputProps()} />
-        </div>
+  const handleValidationErrorsChange = (
+    entityType: TFileType,
+    errors: TValidationErrorProps[]
+  ) => {
+    setValidationErrors((prev) => ({
+      ...prev,
+      [entityType]: errors,
+    }));
+  };
 
-        <div className="max-w-5xl h-screen w-full mx-auto">
-          {Object.entries(entityData)
-            ?.filter(([k, v]) => v.rows.length > 0)
-            .map(([k, v]) => {
-              return (
-                <DataTable
-                  key={k}
-                  rows={v.rows}
-                  columns={v.columns}
-                  dataSet={{
-                    client: entityData.client.rows,
-                    worker: entityData.worker.rows,
-                    tasks: entityData.tasks.rows,
-                  }}
-                  entityType={k as TFileType}
-                  validationErrors={validationErrors[k as TFileType] || []}
-                  onValidationErrorsChange={(entityType, errors) => {
-                    setValidationErrors((prev) => ({
-                      ...prev,
-                      [entityType]: errors,
-                    }));
-                  }}
-                />
-              );
-            })}
-        </div>
+  const handleBusinessRulesChange = (rules: any[]) => {
+    setBusinessRules(rules);
+  };
+
+  const handlePriorityChange = (
+    entityType: TFileType,
+    entityPriorities: Record<string, number>
+  ) => {
+    setPriorities((prev) => ({
+      ...prev,
+      [entityType]: entityPriorities,
+    }));
+  };
+
+  return (
+    <div className="flex flex-col lg:p-0 px-4 items-center relative justify-center w-full ">
+      <div className="w-full h-full space-y-4">
+        <h1 className="leading-none mt-10 tracking-tight text-3xl md:text-5xl font-black text-center">
+          Upload CSV & Excel Files <br /> Edit and Validate and Export
+        </h1>
       </div>
-      {/* {rows?.length > 0 &&
-       } */}
-      <Sidebar
-        rows={activeType ? entityData[activeType].rows : []}
-        validationErrors={validationErrors}
-        files={fullDataSet}
-        entityData={entityData}
-      />
+
+      <div {...getRootProps()} style={{ display: "none" }}>
+        <input {...getInputProps()} />
+      </div>
+
+      {Object.keys(entityData).map((key, index) => {
+        return (
+          <EntityContainer
+            key={index}
+            setActiveType={setActiveType}
+            open={open}
+            rows={entityData[key as TFileType].rows}
+            entityType={key as TFileType}
+            validationErrors={validationErrors[key as TFileType] || []}
+            files={fullDataSet[key as TFileType] || null}
+            setFiles={(files) =>
+              setFullDataSet((prev) => ({
+                ...prev,
+                [key as TFileType]: files,
+              }))
+            }
+            entityData={entityData}
+            setEntityData={setEntityData}
+            onValidationErrorsChange={handleValidationErrorsChange}
+          />
+        );
+      })}
+
+      {/* Prioritization Panel */}
+      <section className="w-full my-8 border-b pb-10 md:pb-16 border-neutral-300 tracking-tight">
+        <div className="max-w-4xl w-full mx-auto">
+          <h2 className="text-2xl font-bold mb-6">Prioritization</h2>
+          <Tabs defaultValue="client" className="w-full">
+            <TabsList className="grid w-full border border-neutral-200 grid-cols-3">
+              <TabsTrigger className="border border-neutral-200" value="client">
+                Clients
+              </TabsTrigger>
+              <TabsTrigger className="border border-neutral-200" value="worker">
+                Workers
+              </TabsTrigger>
+              <TabsTrigger className="border border-neutral-200" value="tasks">
+                Tasks
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="client">
+              <PrioritizationPanel
+                entityType="client"
+                data={entityData.client.rows}
+                onPriorityChange={handlePriorityChange}
+              />
+            </TabsContent>
+            <TabsContent value="worker">
+              <PrioritizationPanel
+                entityType="worker"
+                data={entityData.worker.rows}
+                onPriorityChange={handlePriorityChange}
+              />
+            </TabsContent>
+            <TabsContent value="tasks">
+              <PrioritizationPanel
+                entityType="tasks"
+                data={entityData.tasks.rows}
+                onPriorityChange={handlePriorityChange}
+              />
+            </TabsContent>
+          </Tabs>
+        </div>
+      </section>
+
+      {/* Business Rules Panel */}
+      <section className="w-full my-8 border-b pb-10 md:pb-16 border-neutral-300 tracking-tight">
+        <div className="max-w-4xl w-full mx-auto">
+          <h2 className="text-2xl font-bold mb-6">Business Rules</h2>
+          <BusinessRulesPanel
+            rules={businessRules}
+            onRulesChange={handleBusinessRulesChange}
+          />
+        </div>
+      </section>
+
+      {/* Export Panel */}
+      <section className="w-full my-8 pb-10 md:pb-16 tracking-tight">
+        <div className="max-w-4xl w-full mx-auto">
+          <h2 className="text-2xl font-bold mb-6">Export Data</h2>
+          <ExportPanel
+            clientData={entityData.client.rows}
+            workerData={entityData.worker.rows}
+            tasksData={entityData.tasks.rows}
+            businessRules={businessRules}
+            priorities={priorities}
+            validationErrors={validationErrors}
+          />
+        </div>
+      </section>
     </div>
   );
 };
+
+type TEntityContainerProps = {
+  entityType: TFileType;
+  rows: any[];
+  validationErrors: TValidationErrorProps[];
+  files: TFileProps;
+  setFiles: (files: TFileProps) => void;
+  setActiveType: (type: TFileType) => void;
+  open: () => void;
+  entityData: Record<TFileType, { rows: any[]; columns: string[] }>;
+  setEntityData: (
+    updater: (
+      prev: Record<TFileType, { rows: any[]; columns: string[] }>
+    ) => Record<TFileType, { rows: any[]; columns: string[] }>
+  ) => void;
+  onValidationErrorsChange: (
+    entityType: TFileType,
+    errors: TValidationErrorProps[]
+  ) => void;
+};
+
+const MemoizedDataTable = memo(DataTable);
+const EntityContainer = ({
+  entityType,
+  rows,
+  validationErrors,
+  setActiveType,
+  open,
+  entityData,
+  setFiles,
+  setEntityData,
+  onValidationErrorsChange,
+}: TEntityContainerProps) => {
+  return (
+    <section className="w-full my-8  border-b pb-10 md:pb-16 border-neutral-300 tracking-tight">
+      <div
+        defaultChecked={true}
+        className="text-2xl  max-w-4xl mb-6 w-full mx-auto font-bold"
+      >
+        <div className="flex items-center justify-between w-full">
+          <h2 className="text-2xl font-bold">
+            {capitalizeFirstLetter(entityType)}
+          </h2>
+
+          <div>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => {
+                // Clear files for this entity
+                setFiles(null);
+
+                // Clear rows and columns for this entity
+                setEntityData((prev) => ({
+                  ...prev,
+                  [entityType]: { rows: [], columns: [] },
+                }));
+
+                // Clear validation errors for this entity
+                onValidationErrorsChange(entityType, []);
+              }}
+            >
+              <Trash2 className="size-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
+      <div className="max-w-4xl w-full mx-auto">
+        {rows.length > 0 ? (
+          // rows.map((row, index) => {
+          //   return (
+          <MemoizedDataTable
+            rows={rows}
+            columns={entityData[entityType].columns}
+            dataSet={{
+              client: entityData.client.rows,
+              worker: entityData.worker.rows,
+              tasks: entityData.tasks.rows,
+            }}
+            entityType={entityType}
+            validationErrors={validationErrors}
+            onValidationErrorsChange={(entityType, errors) =>
+              onValidationErrorsChange(entityType, errors)
+            }
+          />
+        ) : (
+          <div
+            onClick={() => {
+              setActiveType(entityType);
+              open();
+            }}
+            className="w-full h-[500px] flex items-center justify-center border-2 border-dashed border-neutral-300 rounded-2xl cursor-pointer"
+          >
+            <span className="text-lg font-medium tracking-tight">
+              No {capitalizeFirstLetter(entityType)} data
+            </span>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+};
+
 type SidebarProps = {
   rows: any[];
   validationErrors: Record<TFileType, TValidationErrorProps[] | null>;
@@ -582,7 +758,7 @@ export const CustomCellRenderer: FC<ICellRendererParams> = ({
   return (
     <div
       className={cn(
-        "relative flex flex-row text-lg font-inter "
+        "relative flex items-center justify-start rounded-2xl text-lg font-inter "
         // isLastColumn && "bg-red-500"
       )}
     >
