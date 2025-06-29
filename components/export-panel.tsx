@@ -15,6 +15,8 @@ import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
 import { TFileType } from "@/lib/types";
 import { Download } from "lucide-react";
+import * as XLSX from "xlsx";
+import { capitalizeFirstLetter } from "@/lib/utils";
 
 interface ExportPanelProps {
   clientData: any[];
@@ -69,6 +71,13 @@ export function ExportPanel({
   const getEntityName = (entity: TFileType) => {
     return entity.charAt(0).toUpperCase() + entity.slice(1);
   };
+
+  function s2ab(s: string) {
+    const buf = new ArrayBuffer(s.length);
+    const view = new Uint8Array(buf);
+    for (let i = 0; i !== s.length; ++i) view[i] = s.charCodeAt(i) & 0xff;
+    return buf;
+  }
 
   const exportData = async () => {
     const exportData: any = {
@@ -159,6 +168,34 @@ export function ExportPanel({
         }.csv`;
         a.click();
         URL.revokeObjectURL(url);
+      });
+    } else if (exportFormat === "xlsx") {
+      // For Excel, we'll export each entity as a separate sheet
+      selectedEntities.forEach((entity, index) => {
+        const workbook = XLSX.utils.book_new();
+        const data = getEntityData(entity);
+        if (data.length === 0) return;
+        const worksheet = XLSX.utils.json_to_sheet(data);
+        XLSX.utils.book_append_sheet(
+          workbook,
+          worksheet,
+          `${capitalizeFirstLetter(entity)} Sheet}`
+        );
+        const excelBuffer = XLSX.write(workbook, {
+          bookType: "xlsx",
+          type: "binary",
+        });
+        console.log({ excelBuffer });
+        const blob = new Blob([s2ab(excelBuffer)], {
+          type: "application/octet-stream",
+        });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.setAttribute("download", `data-alchemist-export-${entity}.xlsx`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
       });
     }
   };
