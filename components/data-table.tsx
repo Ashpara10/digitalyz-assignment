@@ -1,12 +1,16 @@
 "use client";
 
-import { CustomCellRenderer } from "@/app/page";
 import { CellErrorMap, TFileType, TValidationErrorProps } from "@/lib/types";
-import { capitalizeFirstLetter, getCellErrorMap } from "@/lib/utils";
+import { capitalizeFirstLetter, cn, getCellErrorMap } from "@/lib/utils";
 import { DataValidator } from "@/lib/validator";
-import { CellValueChangedEvent, ColDef, GridApi } from "ag-grid-community";
+import {
+  CellValueChangedEvent,
+  ColDef,
+  GridApi,
+  ICellRendererParams,
+} from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { FC, memo, useCallback, useEffect, useMemo, useState } from "react";
 import { ValidationPanel } from "./validation-panel";
 
 interface DataTableProps {
@@ -24,6 +28,25 @@ interface DataTableProps {
     tasks: any[];
   };
 }
+
+const CustomCellRenderer: FC<ICellRendererParams> = ({
+  api,
+  value,
+  column,
+}) => {
+  const cols = api.getAllDisplayedColumns();
+  const isLastColumn = cols[0]?.getId() === column?.getId();
+  return (
+    <div
+      className={cn(
+        "relative flex items-center justify-start rounded-2xl text-lg font-inter "
+        // isLastColumn && "bg-red-500"
+      )}
+    >
+      {value}
+    </div>
+  );
+};
 
 export function DataTable({
   rows,

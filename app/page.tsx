@@ -738,23 +738,4 @@ function Sidebar({ rows, validationErrors, files, entityData }: SidebarProps) {
   );
 }
 
-export const CustomCellRenderer: FC<ICellRendererParams> = ({
-  api,
-  value,
-  column,
-}) => {
-  const cols = api.getAllDisplayedColumns();
-  const isLastColumn = cols[0]?.getId() === column?.getId();
-  return (
-    <div
-      className={cn(
-        "relative flex items-center justify-start rounded-2xl text-lg font-inter "
-        // isLastColumn && "bg-red-500"
-      )}
-    >
-      {value}
-    </div>
-  );
-};
-
 export default Page;
