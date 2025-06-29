@@ -8,49 +8,39 @@ import {
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import {
   AllCommunityModule,
-  ColDef,
   GridApi,
   ICellRendererParams,
   IRowNode,
   ModuleRegistry,
 } from "ag-grid-community";
-import { AgGridReact } from "ag-grid-react";
 import { parse } from "papaparse";
-import React, { FC, memo, useEffect, useMemo, useRef, useState } from "react";
+import React, { FC, memo, useEffect, useRef, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import * as XLSX from "xlsx";
 
+import { BusinessRulesPanel } from "@/components/business-rules-panel";
+import { DataTable } from "@/components/data-table";
+import { ExportPanel } from "@/components/export-panel";
+import { PrioritizationPanel } from "@/components/prioritization-panel";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   CellErrorMap,
   clientSchema,
   taskSchema,
-  workerSchema,
   TFileType,
   TValidationErrorProps,
   ValidationErrorType,
+  workerSchema,
 } from "@/lib/types";
 import {
   capitalizeFirstLetter,
-  checkDuplicateIDs,
   checkMissingColumns,
   cn,
-  getCellErrorMap,
   runCoreValidations,
 } from "@/lib/utils";
 import { themeBalham } from "ag-grid-community";
-import { Plus, Trash2, Upload } from "lucide-react";
-import { DataTable } from "@/components/data-table";
-import { PrioritizationPanel } from "@/components/prioritization-panel";
-import { BusinessRulesPanel } from "@/components/business-rules-panel";
-import { ExportPanel } from "@/components/export-panel";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
+import { Trash2 } from "lucide-react";
 
 type TFileProps = File[] | null;
 ModuleRegistry.registerModules([AllCommunityModule]);
